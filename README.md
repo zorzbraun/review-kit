@@ -1,56 +1,57 @@
 # review-kit
 
-Prenosiv code review set za Claude Code. Radi sa GitLab-om, GitHub-om i lokalnim izmenama, i ne zna
-ni za jednu firmu: sve sto je firmino (osnovna grana, test komanda, domenska pravila, dodatni review
-motor) dolazi iz **profila** koji zivi u firminom repou.
+A portable code review set for Claude Code. It works with GitLab, GitHub and local changes, and it
+knows nothing about any particular company: everything company-specific (base branch, test command,
+domain rules, an extra review engine) comes from a **profile** that lives in the company's repo.
 
-## Instalacija
+## Install
 
 ```bash
 ./install.sh
 ```
 
-Firmin repo linkuje svoje profile u `~/.review-kit/profiles/`. Bez profila vazi `profiles/generic.yaml`.
+A company repo links its own profiles into `~/.review-kit/profiles/`. Without a profile,
+`profiles/generic.yaml` applies.
 
-## Skill-ovi
+## Skills
 
-| Komanda | Kada | Agenti |
+| Command | When | Agents |
 |---|---|---|
-| `/review [cilj] [--paste srb\|eng]` | svakodnevni review, i tvoje izmene pre push-a | `quick-reviewer` (+ motor iz profila) |
-| `/deep-review <cilj>` | rizicne promene | `deep-logic`, `deep-contracts`, `deep-evidence` |
-| `/review-log` | ocenjivanje nalaza iz dnevnika | - |
-| `/review-bench` | merenje recall-a na slucajevima sa poznatim bugom | `bench-judge` |
+| `/review [target] [--paste srb\|eng]` | everyday review, including your own changes before a push | `quick-reviewer` (+ engine from the profile) |
+| `/deep-review <target>` | risky changes | `deep-logic`, `deep-contracts`, `deep-evidence` |
+| `/review-log` | scoring findings from the log | - |
+| `/review-bench` | measuring recall on cases with a known bug | `bench-judge` |
 
-Pravila za sve agente su u `core/rules.md`, a spajanje i ozbiljnost u `core/gate.md`.
+The rules for every agent are in `core/rules.md`; merging and severity are in `core/gate.md`.
 
-## Adapteri
+## Adapters
 
-| Skripta | Sta radi |
+| Script | What it does |
 |---|---|
-| `adapters/profile.sh [repo]` | nadje profil po `origin` URL-u, ispise ga kao `KLJUC=vrednost` |
-| `adapters/target.sh [cilj]` | cilj u folder sa `diff.patch`, `meta.json`, `context.env` i worktree-om |
-| `adapters/cleanup.sh <OUT>` | uklanja worktree (samo `rk-*`) i privremeni folder |
+| `adapters/profile.sh [repo]` | finds the profile by `origin` URL and prints it as `KEY=value` |
+| `adapters/target.sh [target]` | turns a target into a folder with `diff.patch`, `meta.json`, `context.env` and a worktree |
+| `adapters/cleanup.sh <OUT>` | removes the worktree (only `rk-*`) and the temporary folder |
 
-Cilj moze biti: nista (lokalne izmene, i necommit-ovane), broj MR-a ili PR-a (`123`, `!123`, `#123`),
-URL MR-a ili PR-a, grana ili commit.
+A target can be: nothing (local changes, including uncommitted ones), an MR or PR number (`123`,
+`!123`, `#123`), an MR or PR URL, a branch or a commit.
 
-- Diff se racuna od commit-a od kog ga racuna i platforma (`diff_refs.base_sha` / `base.sha`), pa
-  radi i za vec merge-ovan MR.
-- GitHub ide kroz `gh` ako je instaliran, inace kroz javni API (samo javni repoi).
-- U repou se menjaju samo `refs/review-kit/*` i dodaje se detached worktree.
+- The diff is computed from the same commit the platform uses (`diff_refs.base_sha` / `base.sha`),
+  so it also works for an MR that is already merged.
+- GitHub goes through `gh` if it is installed, otherwise through the public API (public repos only).
+- The only changes made in the repo are `refs/review-kit/*` and a detached worktree.
 
-## Profil
+## Profile
 
 ```yaml
-name: moj-projekat
-remote_match: github\.com[:/]firma/projekat(\.git)?$
+name: my-project
+remote_match: github\.com[:/]company/project(\.git)?$
 platform: auto            # gitlab | github | auto
-base_branch: auto         # auto = podrazumevana grana origin-a
+base_branch: auto         # auto = the origin's default branch
 worktree_dir: ~/.review-kit/worktrees
-test_command:             # {files} se zamenjuje listom test fajlova
+test_command:             # {files} is replaced with the list of test files
 test_selector:
-forbidden:                # komande koje review nikad ne sme da pokrene
+forbidden:                # commands the review must never run
 rule_sources: CLAUDE.md, CONTRIBUTING.md
 engines: kit              # kit, repo-review-code
-log: ~/.review-kit/log/moj-projekat.jsonl
+log: ~/.review-kit/log/my-project.jsonl
 ```
