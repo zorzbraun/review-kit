@@ -1,0 +1,12 @@
+# Podrazumevani profil: vazi za svaki repo za koji nema posebnog profila.
+name: generic
+platform: auto
+base_branch: auto
+worktree_dir: ~/.review-kit/worktrees
+test_command:
+test_selector:
+forbidden:
+rule_sources: CLAUDE.md, AGENTS.md, CONTRIBUTING.md, REVIEW.md
+engines: kit
+log: ~/.review-kit/log/generic.jsonl
+bench:
