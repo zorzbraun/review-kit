@@ -15,7 +15,7 @@ github_api() {
 platform_meta() {
   github_api "pulls/$1" | jq '{
     platform: "github", id: (.number|tostring), title, description: .body, author: .user.login,
-    url: .html_url, base: .base.ref, base_sha: .base.sha, head_sha: .head.sha,
+    url: .html_url, base: .base.ref, base_sha: .base.sha, start_sha: .base.sha, head_sha: .head.sha,
     state: (if .merged_at then "merged" else .state end), source_branch: .head.ref
   }'
 }
@@ -32,4 +32,18 @@ platform_discussions() {
 platform_post() {
   command -v gh >/dev/null || { echo "GRESKA: postovanje na GitHub trazi gh (brew install gh)" >&2; return 1; }
   gh api -X POST "repos/$(github_slug)/issues/$1/comments" --field "body=@$2" | jq -r '.id // empty'
+}
+
+platform_head() { github_api "pulls/$1" | jq -r '.head.sha // empty'; }
+
+# inline komentar na dodatoj liniji: platform_post_inline <id> <fajl> <linija> <telo> <base_sha> <start_sha> <head_sha>
+platform_post_inline() {
+  command -v gh >/dev/null || { echo "GRESKA: postovanje na GitHub trazi gh (brew install gh)" >&2; return 1; }
+  gh api -X POST "repos/$(github_slug)/pulls/$1/comments" --field "body=@$4" \
+    -f "commit_id=$7" -f "path=$2" -F "line=$3" -f "side=RIGHT" | jq -r '.id // empty'
+}
+
+platform_approve() {
+  command -v gh >/dev/null || { echo "GRESKA: approve na GitHub-u trazi gh (brew install gh)" >&2; return 1; }
+  gh api -X POST "repos/$(github_slug)/pulls/$1/reviews" -f "event=APPROVE" | jq -r '.id // empty'
 }

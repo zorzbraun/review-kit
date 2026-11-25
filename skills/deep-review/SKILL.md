@@ -1,6 +1,6 @@
 ---
 name: deep-review
-description: "Run a deep code review on a risky merge request, pull request, branch or local change - three independent Opus reviewers (logic, contracts with callers and external APIs, evidence from tests and claims) read an isolated copy in parallel, then every finding is verified in the code and graded Must fix / Should fix / Advisory. More thorough and more expensive than /review. Posts to GitLab or GitHub only after explicit approval. Use when he asks deep review, dubok review, temeljan review, pregledaj detaljno rizican MR, or invokes /deep-review <cilj>."
+description: "Run a deep code review on a risky merge request, pull request, branch or local change - three independent Opus reviewers (logic, contracts with callers and external APIs, evidence from tests and claims) read an isolated copy in parallel, then every finding is verified in the code and graded Must fix / Should fix / Advisory. More thorough and more expensive than /review. On someone else's merge request it posts a summary comment plus inline comments by itself, but only after a deterministic pre-post check passes (all sources ran, every blocker verified in code, description claims judged, head unchanged); approving the MR always asks first. Use when he asks deep review, dubok review, temeljan review, pregledaj detaljno rizican MR, or invokes /deep-review <cilj>."
 argument-hint: "<MR/PR broj | URL | grana | commit> [--base <grana>] [--motor]"
 ---
 
@@ -81,50 +81,71 @@ Po `$KIT/core/gate.md`: spoji po uzroku, sam proveri svaki Must fix i Should fix
 uslove za Must fix, odbaci sta ne mozes da potvrdis. `sources` koristi tacno imena izvora:
 `logic`, `contracts`, `evidence`, `repo-review-code`.
 
+Svakom nalazu koji si otvorio u kodu i potvrdio dodaj `"verified": true`. Must fix i Should fix bez
+toga ne prolaze proveru pre kacenja.
+
 Konacnu listu sacuvaj u `$OUT/findings/final.json`, pa:
 
 ```bash
 python3 "$KIT/scripts/log_findings.py" "$OUT" "$OUT/findings/final.json" deep
 ```
 
-## Korak 5 — izvestaj
+## Korak 5 — izvestaj i komentar
 
-Napisi `$OUT/review.md` na **engleskom** (moze da ide na MR/PR) i pokazi ga u chatu:
+1. **`$OUT/checks.json`**, sta si proverio:
+   ```json
+   {"claims": [{"claim": "<tvrdnja iz opisa>", "verdict": "holds | does_not_hold | unverified", "reason": "..."}],
+    "tests_run": false,
+    "not_verified": ["<sta nije moglo da se proveri i zasto>"]}
+   ```
+   Svaka tvrdnja iz brief-a (tacka 3) dobija presudu iz koda. Opis bez tvrdnji: prazna lista.
+2. **`$OUT/comment.md`**, zbirni komentar po `$KIT/core/post-format.md` (engleski). Pre toga pokreni
+   proveru bez head-a, samo da dobijes `post-plan.json` i znas koji nalaz ide inline:
+   ```bash
+   python3 "$KIT/scripts/post_gate.py" "$OUT" <izvori zarezom> --live-head "$HEAD_SHA"
+   ```
+   Ako postoji raniji run za isti MR u `$(dirname "$LOG")/runs/`, napravi drugi krug po istom fajlu.
+3. U chatu pokazi `comment.md` i inline nalaze. Ispod, na srpskom, objasni najvazniji nalaz kao
+   junioru: sta, zasto puca, primer.
 
-```
-What was reviewed     HEAD_SHA, sources, which source was unavailable
-Must fix
-Should fix
-Behavior changes the description does not mention
-Advisory
-What holds up
-```
+`<izvori zarezom>` su izvori koji su pokrenuti: `logic,contracts,evidence`, plus `repo-review-code`
+uz `--motor`.
 
-Svaki nalaz: `file:line`, okidac pa posledica, i popravka. Gde vazi, oznaka `impact unmeasured` ili
-`contract unverified`. Prazne sekcije izostavi. Ispod izvestaja, na srpskom, objasni najvazniji
-nalaz kao junioru: sta, zasto puca, primer.
+## Korak 6 — provera, pa kacenje
 
-## Korak 6 — okaci, samo uz odobrenje
+Samo za `KIND=pr` ciji autor **nije** on (`meta.author` protiv `glab api user` / `gh api user`).
+Za njegov MR i za lokalne izmene nista se ne kaci.
 
-Ako je `KIND=pr`, `AskUserQuestion`: da li da se okaci. **Ako kaze da**, jos jednom pokazi tacan
-link iz `meta.json`, pa:
-
-```bash
-"$KIT/adapters/post.sh" "$OUT" "$OUT/review.md"
-```
-
-- Na GitLab-u `$` u tekstu stavi u backtick (inace se renderuje kao matematika).
-- Ako skripta ne vrati `OKACENO`, prijavi gresku i ne pokusavaj ponovo.
+1. Head uzivo i provera:
+   ```bash
+   source "$KIT/adapters/lib/$(jq -r .platform "$OUT/meta.json").sh"; source "$OUT/context.env"
+   LIVE=$(platform_head "$ID")
+   python3 "$KIT/scripts/post_gate.py" "$OUT" <izvori zarezom> --live-head "$LIVE"
+   ```
+2. **NE PROLAZI:** nista ne kaci. Javi razloge, i sta treba uraditi (npr. ponovo pokreni review
+   jer je head nov, ili proveri nalaz u kodu). Ne zaobilazi proveru rucnim kacenjem.
+3. **PROLAZI:** okaci bez pitanja (on je to izricito odobrio za deep-review):
+   ```bash
+   "$KIT/adapters/post.sh" "$OUT" "$OUT/comment.md" --inline "$OUT/post-plan.json"
+   ```
+   Na GitLab-u `$` u tekstu stavi u backtick (inace se renderuje kao matematika). Ako skripta ne vrati
+   `OKACENO`, prijavi gresku i ne pokusavaj ponovo.
+4. **Approve nikad sam.** Ako nema Must fix ni Should fix, `AskUserQuestion`: da li da odobri MR
+   (pokazi link). Samo na izricito "da":
+   ```bash
+   "$KIT/adapters/approve.sh" "$OUT"
+   ```
 
 ## Korak 7 — sacuvaj i ocisti, uvek
 
-Kopiraj `$OUT/brief.md`, `$OUT/findings/` i `$OUT/review.md` u
-`$(dirname "$LOG")/runs/<ID>-<HEAD_SHA:0:7>/` i javi mu putanju. Zatim `CLEANUP` komanda iz
-Koraka 1, i kad review pukne ili ga on prekine.
+Kopiraj `$OUT/brief.md`, `$OUT/findings/`, `$OUT/checks.json`, `$OUT/comment.md` i
+`$OUT/post-plan.json` u `$(dirname "$LOG")/runs/<ID>-<HEAD_SHA:0:7>/` i javi mu putanju. Zatim
+`CLEANUP` komanda iz Koraka 1, i kad review pukne ili ga on prekine.
 
 ## Pravila
 
-- Razgovor na srpskom, izvestaj za MR/PR na engleskom, bez emoji-ja.
-- **Nista se ne kaci bez izricitog odobrenja u toj poruci.** Nijedan skill sa `--post`.
+- Razgovor na srpskom, komentar za MR/PR na engleskom, bez emoji-ja.
+- Komentar se kaci sam **samo** kad `post_gate.py` kaze PROLAZI, i samo na tudji MR/PR.
+  Approve uvek trazi izricito "da" u toj poruci. Nijedan drugi skill sa `--post`.
 - Nikad `git add`, `git commit`, `git push`, ni komande iz `FORBIDDEN`. Kod je read-only za sve agente.
 - Nedostupan izvor nije cist izvor.
